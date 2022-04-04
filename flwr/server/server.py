@@ -46,7 +46,7 @@ import time
 from model import *
 
 
-handler = logging.FileHandler("reports/server.csv", mode='a')
+handler = logging.FileHandler("reports0/server.csv", mode='a')
 logger = logging.getLogger("server")
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)

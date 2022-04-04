@@ -5,6 +5,8 @@ from utils import *
 from model import *
 import flwr as fl
 import logging
+import os
+import re
 
 
 # 1. Randomly initialize a neural network f (x; m θ) where θ = θ0 and m = 1|θ| is a mask.
@@ -13,6 +15,11 @@ import logging
 # 4. Reset the weights of the remaining portion of the network to their values in θ0 . That is, let θ = θ0.
 # 5. Let m = m0 and repeat steps 2 through 4 until a sufficiently pruned network has been obtained.
 
+
+list_dir = [x for x in os.listdir() if "reports" in x]
+list_numbers_dirs = [re.findall(r'[0-9]+', x)[0] for x in list_dir]
+max_dirs = max(list_numbers_dirs)
+folder=f"reports{int(max_dirs)}"
 
 with open(f'settings.txt', 'r') as file_dict:
     settings = file_dict.read().replace('\n', '')
@@ -47,7 +54,7 @@ class CifarClient(fl.client.NumPyClient):
         self.testloader = testloader
         self.num_examples = {"trainset": len(trainloader.dataset), "testset": len(testloader.dataset)}
 
-        self.logger = self.setup_logger('client_logger', f'reports/report_{self.id}.csv')
+        self.logger = self.setup_logger('client_logger', f'{folder}/client_{self.id}.csv')
 
     def get_parameters(self):
 

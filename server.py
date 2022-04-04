@@ -5,6 +5,9 @@ import flwr as fl
 import torch
 from utils import *
 from model import *
+import os
+import re
+import shutil
 
 # todo get_on_fit_config_fn
 
@@ -17,6 +20,13 @@ torch.cuda.manual_seed_all(SEED)
 torch.backends.cudnn.determinstic = True
 torch.backends.cudnn.benchmark = False
 
+list_dir = [x for x in os.listdir() if "reports" in x]
+list_numbers_dirs = [re.findall(r'[0-9]+', x)[0] for x in list_dir]
+max_dirs = max(list_numbers_dirs)
+
+folder=f"reports{int(max_dirs)+1}"
+os.mkdir(folder)
+shutil.copy("settings.txt",f"{folder}/")
 
 with open(f'settings.txt', 'r') as file_dict:
     settings = file_dict.read().replace('\n', '')
@@ -67,7 +77,7 @@ print(DEVICE)
 testloader, num_examples = load_data(batch_size)
 model = cifarNet().to(DEVICE)
 
-handler = logging.FileHandler("reports/server.csv", mode='w')
+handler = logging.FileHandler(f"{folder}/server.csv", mode='w')
 logger = logging.getLogger("server")
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
@@ -83,4 +93,4 @@ strategy = fl.server.strategy.FedAvg(
 )
 
 
-fl.server.start_server(f"{ADDRESS}:8080", config={"num_rounds": num_rounds}, strategy=strategy)
+fl.server.start_server(f"{ADDRESS}:8082", config={"num_rounds": num_rounds}, strategy=strategy)

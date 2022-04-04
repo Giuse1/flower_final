@@ -24,7 +24,7 @@ from flwr.common import Weights
 # import logging
 # import time
 
-# handler = logging.FileHandler("reports/server.csv", mode='a')
+# handler = logging.FileHandler("reports0/server.csv", mode='a')
 # logger = logging.getLogger("server")
 # logger.setLevel(logging.INFO)
 # logger.addHandler(handler)
