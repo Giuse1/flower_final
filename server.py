@@ -8,7 +8,14 @@ from model import *
 
 # todo get_on_fit_config_fn
 
-ADDRESS = "[::]"
+SEED = 0
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.determinstic = True
+torch.backends.cudnn.benchmark = False
 
 
 with open(f'settings.txt', 'r') as file_dict:
@@ -23,16 +30,6 @@ lr_decay = settings["lr_decay"]
 local_epochs = settings["local_epochs"]
 num_rounds = settings["num_rounds"]
 ADDRESS =  settings["address"]
-
-
-
-SEED = 0
-np.random.seed(SEED)
-torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-torch.backends.cudnn.determinstic = True
-torch.backends.cudnn.benchmark = False
 
 
 def get_eval_fn(model, testloader, device, logger):

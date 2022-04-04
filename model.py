@@ -2,8 +2,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 import numpy as np
+import random
+
+
 
 SEED = 0
+random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
