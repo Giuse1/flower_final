@@ -6,8 +6,12 @@ from model import *
 import flwr as fl
 import logging
 
-# todo 20 client,
-# todo stesso test-set, quello globale
+
+# 1. Randomly initialize a neural network f (x; m θ) where θ = θ0 and m = 1|θ| is a mask.
+# 2. Train the network for j iterations, reaching parameters m θj .
+# 3. Prune s% of the parameters, creating an updated mask m0 where Pm0 = (Pm − s)%.
+# 4. Reset the weights of the remaining portion of the network to their values in θ0 . That is, let θ = θ0.
+# 5. Let m = m0 and repeat steps 2 through 4 until a sufficiently pruned network has been obtained.
 
 
 with open(f'settings.txt', 'r') as file_dict:
@@ -45,7 +49,7 @@ class CifarClient(fl.client.NumPyClient):
         self.logger = self.setup_logger('client_logger', f'reports/report_{self.id}.csv')
 
     def get_parameters(self):
-        # print(f"CLIENT {self.id}GET PARAMS")
+
         return [val.cpu().numpy() for _, val in self.net.state_dict().items()]
 
     def set_parameters(self, parameters):
@@ -60,20 +64,12 @@ class CifarClient(fl.client.NumPyClient):
         current_round = config["rnd"]
 
         print(f"CLIENT {self.id} TRAIN - ROUND {current_round}")
+        print(self.net.conv1.bias.data)
 
-
-        # print(f"CLIENT {self.id}FIT: BEFORE SET PARAMS")
-        # print(self.net.conv1.bias.data)
         self.set_parameters(parameters)
-        # print(f"CLIENT {self.id}FIT: AFTER SET PARAMS")
-        # print(self.net.conv1.bias.data)
 
         self.logger.info(','.join(map(str, [current_round,"training","start",time.time_ns(),time.process_time_ns(),"",""])))
         self.train(lr=config["lr"],local_epochs=config["local_epochs"])
-
-        # print(f"CLIENT {self.id}FIT: AFTER TRAIN")
-        # print(self.net.conv1.bias.data)
-
         self.logger.info(','.join(map(str, [current_round,"training","end",time.time_ns(),time.process_time_ns(),"",""])))
 
         self.logger.info(','.join(map(str, [current_round, "evaluation", "start", time.time_ns(), time.process_time_ns(), "", ""])))
@@ -86,11 +82,7 @@ class CifarClient(fl.client.NumPyClient):
         raise Exception("ENTERED EVALUATE")
 
         current_round = config["rnd"]
-        # print(f"CLIENT {self.id}EVALUATE: BEFORE SET PARAMS")
-        # print(self.net.conv1.bias.data)
         self.set_parameters(parameters)
-        # print(f"CLIENT {self.id}EVALUATE: AFTER SET PARAMS")
-        # print(self.net.conv1.bias.data)
         self.logger.info(','.join(map(str, [current_round,"evaluate","start",time.time_ns(),time.process_time_ns(),"",""])))
         loss, accuracy = self.test()
         self.logger.info(','.join(map(str, [current_round,"evaluate","end",time.time_ns(),time.process_time_ns(),"",""])))
@@ -100,7 +92,6 @@ class CifarClient(fl.client.NumPyClient):
     def train(self, lr, local_epochs):
 
         self.net.train()
-        # print(f"CLIENT {self.id}TRAIN")
 
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(self.net.parameters(), lr=lr)
@@ -115,7 +106,7 @@ class CifarClient(fl.client.NumPyClient):
 
     def test(self):
         self.net.eval()
-        # print(f"CLIENT {self.id}TEST")
+
         criterion = torch.nn.CrossEntropyLoss()
         correct, total, loss = 0, 0, 0.0
         with torch.no_grad():
@@ -132,11 +123,9 @@ class CifarClient(fl.client.NumPyClient):
     def setup_logger(self, name, log_file, level=logging.INFO):
 
         handler = logging.FileHandler(log_file,mode='w')
-
         logger = logging.getLogger(name)
         logger.setLevel(level)
         logger.addHandler(handler)
-
         logger.info("round,operation,phase,t,p,train_loss,train_acc")
 
         return logger
@@ -148,5 +137,4 @@ parser.add_option('-i', dest='id', type='int')
 time.sleep(options.id)
 trainloader, testloader = get_cifar_iid(batch_size, total_num_clients, options.id)
 
-print(f"Client {options.id}")
 fl.client.start_numpy_client(f"{ADDRESS}:8080", client=CifarClient(options.id, trainloader, testloader, batch_size))

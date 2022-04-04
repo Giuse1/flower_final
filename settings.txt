@@ -1,1 +1,2 @@
-{"address":"192.168.1.5","batch_size" : 50,"total_num_clients" : 2,"client_per_round": 2,"lr":0.05,"lr_decay":0.99,"num_rounds":250,"local_epochs" : 1}
+{"address":"localhost","batch_size" : 50,"total_num_clients" : 5,"client_per_round": 5,"lr":0.05,
+"lr_decay":0.99,"num_rounds":100,"local_epochs" : 1,"percentage_to_prune":0.2,"round_pruning":25}

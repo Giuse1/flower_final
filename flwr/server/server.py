@@ -13,12 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Flower server."""
-
-
+import ast
 import concurrent.futures
+import copy
 import timeit
+from collections import OrderedDict
 from logging import DEBUG, INFO, WARNING
 from typing import Dict, List, Optional, Tuple, Union
+import torch.nn.utils.prune as prune
 
 from flwr.common import (
     Disconnect,
@@ -31,6 +33,7 @@ from flwr.common import (
     Scalar,
     Weights,
     weights_to_parameters,
+    parameters_to_weights,
 )
 from flwr.common.logger import log
 from flwr.server.client_manager import ClientManager
@@ -40,6 +43,8 @@ from flwr.server.strategy import FedAvg, Strategy
 
 import logging
 import time
+from model import *
+
 
 handler = logging.FileHandler("reports/server.csv", mode='a')
 logger = logging.getLogger("server")
@@ -114,6 +119,17 @@ class Server:
         )
         self.strategy: Strategy = strategy if strategy is not None else FedAvg()
         self.max_workers: Optional[int] = None
+        self.model = cifarNet()
+
+        with open(f'settings.txt', 'r') as file_dict:
+            settings = file_dict.read().replace('\n', '')
+            settings = ast.literal_eval(settings)
+        self.percentage_to_prune = settings["percentage_to_prune"]
+        self.round_pruning = settings["round_pruning"]
+
+        self.starting_modules = copy.deepcopy(self.model.state_dict())
+        self.weight_keys = list(self.starting_modules.keys())
+        self.weight_keys = [k for k in self.weight_keys if "weight" in k]
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -312,6 +328,28 @@ class Server:
             parameters_aggregated, metrics_aggregated = aggregated_result
 
         logger.info(','.join(map(str, [rnd, "aggregation", "end", time.time_ns(), time.process_time_ns(), "", ""])))
+
+        if rnd % self.round_pruning == 0:
+            logger.info(','.join(map(str, [rnd, "pruning", "start", time.time_ns(), time.process_time_ns(), "", ""])))
+            # load aggreagated parameters in model
+            parameters = parameters_to_weights(parameters_aggregated)
+            params_dict = zip(self.model.state_dict().keys(), parameters)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            self.model.load_state_dict(state_dict, strict=True)
+
+            # prune model and reset parameters
+            pruned_reset_modules = copy.deepcopy(self.starting_modules)
+
+            for i, module in enumerate(list(self.model.modules())[1:]):
+                prune.l1_unstructured(module, name="weight", amount=self.percentage_to_prune)
+                k = self.weight_keys[i]
+                pruned_reset_modules[k] = self.starting_modules[k] * list(module.named_buffers())[0][1]
+
+            # from Torch Tensors to parameters
+            to_prune_modules = [val.cpu().numpy() for _, val in pruned_reset_modules.items()]
+            parameters_aggregated = weights_to_parameters(to_prune_modules)
+
+            logger.info(','.join(map(str, [rnd, "pruning", "end", time.time_ns(), time.process_time_ns(), "", ""])))
 
 
         return parameters_aggregated, metrics_aggregated, (results, failures)

@@ -68,7 +68,7 @@ def get_on_fit_config_fn() -> Callable[[int], Dict[str, str]]:
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(DEVICE)
 testloader, num_examples = load_data(batch_size)
-model= cifarNet().to(DEVICE)
+model = cifarNet().to(DEVICE)
 
 handler = logging.FileHandler("reports/server.csv", mode='w')
 logger = logging.getLogger("server")
