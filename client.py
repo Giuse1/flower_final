@@ -42,7 +42,9 @@ class CifarClient(fl.client.NumPyClient):
         self.batch_size = batch_size
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.net = cifarNet().to(self.device)
+        print(self.net.conv1.bias.data)
         self.trainloader = trainloader
+        print([i[1] for i in trainloader.dataset[:10]])
         self.testloader = testloader
         self.num_examples = {"trainset": len(trainloader.dataset), "testset": len(testloader.dataset)}
 
@@ -64,7 +66,6 @@ class CifarClient(fl.client.NumPyClient):
         current_round = config["rnd"]
 
         print(f"CLIENT {self.id} TRAIN - ROUND {current_round}")
-        print(self.net.conv1.bias.data)
 
         self.set_parameters(parameters)
 
@@ -137,4 +138,4 @@ parser.add_option('-i', dest='id', type='int')
 time.sleep(options.id)
 trainloader, testloader = get_cifar_iid(batch_size, total_num_clients, options.id)
 
-fl.client.start_numpy_client(f"{ADDRESS}:8080", client=CifarClient(options.id, trainloader, testloader, batch_size))
+fl.client.start_numpy_client(f"{ADDRESS}:8081", client=CifarClient(options.id, trainloader, testloader, batch_size))
