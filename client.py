@@ -49,6 +49,7 @@ class CifarClient(fl.client.NumPyClient):
         self.id = id
         self.batch_size = batch_size
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        print(self.device)
         self.net = cifarNet().to(self.device)
         self.trainloader = trainloader
         self.testloader = testloader
