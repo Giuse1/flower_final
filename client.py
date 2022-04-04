@@ -26,6 +26,7 @@ ADDRESS =  settings["address"]
 
 
 SEED = 0
+random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
