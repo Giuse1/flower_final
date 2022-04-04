@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 
+#
 # todo get_on_fit_config_fn
 
 SEED = 0
@@ -93,4 +94,4 @@ strategy = fl.server.strategy.FedAvg(
 )
 
 
-fl.server.start_server(f"{ADDRESS}:8082", config={"num_rounds": num_rounds}, strategy=strategy)
+fl.server.start_server(f"{ADDRESS}:8080", config={"num_rounds": num_rounds}, strategy=strategy)
