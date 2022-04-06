@@ -77,18 +77,29 @@ class CifarClient(fl.client.NumPyClient):
         print(self.net.conv1.weight[0][0])
 
         params_dict = zip(self.ordered_keys, parameters)
-        if self.current_round == (settings["round_pruning"]+1):
+        if self.current_round < (settings["round_pruning"]+1):
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            self.net.load_state_dict(state_dict, strict=True)
+
+        elif self.current_round == (settings["round_pruning"]+1):
             tmp = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             self.net.load_state_dict(self.starting_dict, strict=True)
+            self.mask_dict = {}
+            for k in self.ordered_keys:
+                if "weight" in k:
+                    name, att = k.split('.')
+                    self.mask_dict[k]=tmp[k]
+                    prune.custom_from_mask(getattr(self.net,name), name=att, mask=tmp[k])
+
+        else:
+            received_state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            self.net.load_state_dict(received_state_dict, strict=True)
 
             for k in self.ordered_keys:
                 if "weight" in k:
                     name, att = k.split('.')
-                    prune.custom_from_mask(getattr(self.net,name), name=att, mask=tmp[k])
+                    prune.custom_from_mask(getattr(self.net, name), name=att, mask=self.mask_dict[k])
 
-        else:
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-            self.net.load_state_dict(state_dict, strict=True)
         # if self.current_round == (settings["round_pruning"]+1):
         #     print(f"ROUND: {self.current_round} - PRUNING")
         #     client_mask = (~torch.isnan(self.net.conv1.weight)).float()
