@@ -1,4 +1,5 @@
 import ast
+import copy
 import optparse
 import time
 from utils import *
@@ -7,17 +8,12 @@ import flwr as fl
 import logging
 import os
 import re
+import torch.nn.utils.prune as prune
 
-
-# 1. Randomly initialize a neural network f (x; m θ) where θ = θ0 and m = 1|θ| is a mask.
-# 2. Train the network for j iterations, reaching parameters m θj .
-# 3. Prune s% of the parameters, creating an updated mask m0 where Pm0 = (Pm − s)%.
-# 4. Reset the weights of the remaining portion of the network to their values in θ0 . That is, let θ = θ0.
-# 5. Let m = m0 and repeat steps 2 through 4 until a sufficiently pruned network has been obtained.
 
 
 list_dir = [x for x in os.listdir() if "reports" in x]
-list_numbers_dirs = [re.findall(r'[0-9]+', x)[0] for x in list_dir]
+list_numbers_dirs = [int(re.findall(r'[0-9]+', x)[0]) for x in list_dir]
 max_dirs = max(list_numbers_dirs)
 folder=f"reports{int(max_dirs)}"
 
@@ -51,49 +47,87 @@ class CifarClient(fl.client.NumPyClient):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print(self.device)
         self.net = cifarNet().to(self.device)
+        self.starting_dict = copy.deepcopy(self.net.state_dict())
         self.trainloader = trainloader
         self.testloader = testloader
         self.num_examples = {"trainset": len(trainloader.dataset), "testset": len(testloader.dataset)}
+        self.current_round = -1
+        self.ordered_keys = (self.net.state_dict().keys())
 
         self.logger = self.setup_logger('client_logger', f'{folder}/client_{self.id}.csv')
 
     def get_parameters(self):
 
-        return [val.cpu().numpy() for _, val in self.net.state_dict().items()]
+        try:
+            for k in self.ordered_keys:
+                if "weight" in k:
+                    name, att = k.split('.')
+                    prune.remove(getattr(self.net,name), name=att)
+            print("GET PARAMS AFTER PRUNE REMOVE")
+        except:
+            pass
+
+        to_return = [self.net.state_dict()[k].cpu().numpy() for k in self.ordered_keys]
+
+        return to_return
 
     def set_parameters(self, parameters):
 
-        params_dict = zip(self.net.state_dict().keys(), parameters)
-        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-        self.net.load_state_dict(state_dict, strict=True)
+        print("BEFORE SET PARAMETERS")
+        print(self.net.conv1.weight[0][0])
 
+        params_dict = zip(self.ordered_keys, parameters)
+        if self.current_round == (settings["round_pruning"]+1):
+            tmp = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            self.net.load_state_dict(self.starting_dict, strict=True)
+
+            for k in self.ordered_keys:
+                if "weight" in k:
+                    name, att = k.split('.')
+                    prune.custom_from_mask(getattr(self.net,name), name=att, mask=tmp[k])
+
+        else:
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            self.net.load_state_dict(state_dict, strict=True)
+        # if self.current_round == (settings["round_pruning"]+1):
+        #     print(f"ROUND: {self.current_round} - PRUNING")
+        #     client_mask = (~torch.isnan(self.net.conv1.weight)).float()
+        #     self.net.conv1.weight = nn.Parameter(torch.nan_to_num(self.net.conv1.weight, 0))
+        #     prune.custom_from_mask(self.net.conv1, name='weight', mask=client_mask)
+
+        print("AFTER SET PARAMETERS")
+        print(self.net.conv1.weight[0][0])
 
     def fit(self, parameters, config):
+        
 
-        current_round = config["rnd"]
+        self.current_round = config["rnd"]
+        print(f"CLIENT {self.id} TRAIN - ROUND {self.current_round}")
 
-        print(f"CLIENT {self.id} TRAIN - ROUND {current_round}")
 
         self.set_parameters(parameters)
 
-        self.logger.info(','.join(map(str, [current_round,"training","start",time.time_ns(),time.process_time_ns(),"",""])))
+        self.logger.info(','.join(map(str, [self.current_round,"training","start",time.time_ns(),time.process_time_ns(),"",""])))
         self.train(lr=config["lr"],local_epochs=config["local_epochs"])
-        self.logger.info(','.join(map(str, [current_round,"training","end",time.time_ns(),time.process_time_ns(),"",""])))
+        self.logger.info(','.join(map(str, [self.current_round,"training","end",time.time_ns(),time.process_time_ns(),"",""])))
 
-        self.logger.info(','.join(map(str, [current_round, "evaluation", "start", time.time_ns(), time.process_time_ns(), "", ""])))
+        self.logger.info(','.join(map(str, [self.current_round, "evaluation", "start", time.time_ns(), time.process_time_ns(), "", ""])))
         train_loss, train_acc = self.test()
-        self.logger.info(','.join(map(str, [current_round, "evaluation", "end", time.time_ns(), time.process_time_ns(), train_loss, train_acc])))
+        self.logger.info(','.join(map(str, [self.current_round, "evaluation", "end", time.time_ns(), time.process_time_ns(), train_loss, train_acc])))
+
+        print("AFTER TRAINING")
+        print(self.net.conv1.weight[0][0])
 
         return self.get_parameters(), self.num_examples["trainset"], {}
 
     def evaluate(self, parameters, config):
         raise Exception("ENTERED EVALUATE")
 
-        current_round = config["rnd"]
+        self.current_round = config["rnd"]
         self.set_parameters(parameters)
-        self.logger.info(','.join(map(str, [current_round,"evaluate","start",time.time_ns(),time.process_time_ns(),"",""])))
+        self.logger.info(','.join(map(str, [self.current_round,"evaluate","start",time.time_ns(),time.process_time_ns(),"",""])))
         loss, accuracy = self.test()
-        self.logger.info(','.join(map(str, [current_round,"evaluate","end",time.time_ns(),time.process_time_ns(),"",""])))
+        self.logger.info(','.join(map(str, [self.current_round,"evaluate","end",time.time_ns(),time.process_time_ns(),"",""])))
 
         return float(loss), self.num_examples["testset"], {"accuracy": float(accuracy)}
 

@@ -46,6 +46,11 @@ import time
 from model import *
 
 
+with open(f'settings.txt', 'r') as file_dict:
+    settings = file_dict.read().replace('\n', '')
+    settings = ast.literal_eval(settings)
+
+
 handler = logging.FileHandler("reports0/server.csv", mode='a')
 logger = logging.getLogger("server")
 logger.setLevel(logging.INFO)
@@ -119,7 +124,19 @@ class Server:
         )
         self.strategy: Strategy = strategy if strategy is not None else FedAvg()
         self.max_workers: Optional[int] = None
+
+        SEED = 0
+        random.seed(SEED)
+        np.random.seed(SEED)
+        torch.manual_seed(SEED)
+        torch.cuda.manual_seed(SEED)
+        torch.cuda.manual_seed_all(SEED)
+        torch.backends.cudnn.determinstic = True
+        torch.backends.cudnn.benchmark = False
+
         self.model = cifarNet()
+        self.starting_dict = copy.deepcopy(self.model.state_dict())
+        print(self.model.conv1.weight[0][0])
 
         with open(f'settings.txt', 'r') as file_dict:
             settings = file_dict.read().replace('\n', '')
@@ -329,28 +346,66 @@ class Server:
 
         logger.info(','.join(map(str, [rnd, "aggregation", "end", time.time_ns(), time.process_time_ns(), "", ""])))
 
-        if rnd % self.round_pruning == 0:
+        if rnd == settings["round_pruning"]:
+            print("PRUNING")
+
             logger.info(','.join(map(str, [rnd, "pruning", "start", time.time_ns(), time.process_time_ns(), "", ""])))
+
+            ordered_keys = (self.model.state_dict().keys())
+
             # load aggreagated parameters in model
             parameters = parameters_to_weights(parameters_aggregated)
             params_dict = zip(self.model.state_dict().keys(), parameters)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             self.model.load_state_dict(state_dict, strict=True)
 
-            # prune model and reset parameters
-            pruned_reset_modules = copy.deepcopy(self.starting_modules)
+            ## LOCAL PRUNING
+            # prune.l1_unstructured(self.model.conv1, name="weight", amount=settings["percentage_to_prune"])
+            # # SERVER: replace 0 with NaN
+            # original_server_mask = copy.deepcopy(self.model.conv1.weight_mask)
+            # server_mask_to_nan = (self.model.conv1.weight_mask == 0).data
+            # server_mask = (self.model.conv1.weight_mask != 0).data
+            # prune.remove(self.model.conv1, 'weight')
+            #
+            # # reinit starting weights
+            #
+            # with torch.no_grad():
+            #     self.model.conv1.weight[server_mask_to_nan] = float('nan')
+            #
+            # # from Torch Tensors to parameters
+            # to_prune_modules = [self.model.state_dict()[k].cpu().numpy() for k in ordered_keys]
+            # parameters_aggregated = weights_to_parameters(to_prune_modules)
 
-            for i, module in enumerate(list(self.model.modules())[1:]):
-                prune.l1_unstructured(module, name="weight", amount=self.percentage_to_prune)
-                k = self.weight_keys[i]
-                pruned_reset_modules[k] = self.starting_modules[k] * list(module.named_buffers())[0][1]
+            ########################################
+            # LOCAL PRUNING
+            parameters_to_prune = (
+                (self.model.conv1, 'weight'),
+                (self.model.conv2, 'weight'),
+                (self.model.conv3, 'weight'),
+                (self.model.fc1, 'weight'),
+                (self.model.fc2, 'weight'),
+            )
 
-            # from Torch Tensors to parameters
-            to_prune_modules = [val.cpu().numpy() for _, val in pruned_reset_modules.items()]
-            parameters_aggregated = weights_to_parameters(to_prune_modules)
+            prune.global_unstructured(
+                parameters_to_prune,
+                pruning_method=prune.L1Unstructured,
+                amount=0.5,
+            )
+
+            # replace weights with mask
+            state_dict = copy.deepcopy(self.model.state_dict())
+            to_return_dict = []
+
+            for k in ordered_keys:
+                if "weight" in k:
+                    to_return_dict.append(state_dict[k+"_mask"].cpu().numpy())
+                else:
+                    to_return_dict.append(state_dict[k].cpu().numpy())
+
+            parameters_aggregated = weights_to_parameters(to_return_dict)
+
 
             logger.info(','.join(map(str, [rnd, "pruning", "end", time.time_ns(), time.process_time_ns(), "", ""])))
-
 
         return parameters_aggregated, metrics_aggregated, (results, failures)
 

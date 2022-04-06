@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
 from operator import itemgetter
 import random
+import torch.nn.utils.prune as prune
+
 
 SEED = 0
 random.seed(SEED)
@@ -33,7 +35,7 @@ def get_cifar_iid(batch_size, total_num_clients, id):
 
     transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-    trainset = CIFAR10(root='data', train=True,download=False, transform=transform)
+    trainset = CIFAR10(root='data', train=True,download=False, transform=transform) # todo
     total_data_train = len(trainset)
     random_list_train = random.sample(range(total_data_train), total_data_train)
     data_per_client_train = int(total_data_train / total_num_clients)
@@ -61,3 +63,15 @@ def test_server(net, testloader, device):
             correct += (predicted == labels).sum().item()
     accuracy = correct / total
     return loss, accuracy
+
+class CustomMask(prune.BasePruningMethod):
+
+    def compute_mask(self, t, default_mask):
+        mask = default_mask.clone()
+        mask.view(-1)[::2] = 0
+        return mask
+
+def foobar_unstructured(module, name):
+
+    CustomMask.apply(module, name)
+    return module
