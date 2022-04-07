@@ -77,11 +77,11 @@ class CifarClient(fl.client.NumPyClient):
         print(self.net.conv1.weight[0][0])
 
         params_dict = zip(self.ordered_keys, parameters)
-        if self.current_round < (settings["round_pruning"]+1):
+        if self.current_round < settings["round_pruning"]:
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             self.net.load_state_dict(state_dict, strict=True)
 
-        elif self.current_round == (settings["round_pruning"]+1):
+        elif self.current_round == settings["round_pruning"]:
             tmp = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             self.net.load_state_dict(self.starting_dict, strict=True)
             self.mask_dict = {}
@@ -99,12 +99,6 @@ class CifarClient(fl.client.NumPyClient):
                 if "weight" in k:
                     name, att = k.split('.')
                     prune.custom_from_mask(getattr(self.net, name), name=att, mask=self.mask_dict[k])
-
-        # if self.current_round == (settings["round_pruning"]+1):
-        #     print(f"ROUND: {self.current_round} - PRUNING")
-        #     client_mask = (~torch.isnan(self.net.conv1.weight)).float()
-        #     self.net.conv1.weight = nn.Parameter(torch.nan_to_num(self.net.conv1.weight, 0))
-        #     prune.custom_from_mask(self.net.conv1, name='weight', mask=client_mask)
 
         print("AFTER SET PARAMETERS")
         print(self.net.conv1.weight[0][0])

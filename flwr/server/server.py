@@ -142,7 +142,7 @@ class Server:
             settings = file_dict.read().replace('\n', '')
             settings = ast.literal_eval(settings)
         self.percentage_to_prune = settings["percentage_to_prune"]
-        self.round_pruning = settings["round_pruning"]
+        self.round_pruning = settings["round_pruning"]-1
 
         self.starting_modules = copy.deepcopy(self.model.state_dict())
         self.weight_keys = list(self.starting_modules.keys())
@@ -346,7 +346,7 @@ class Server:
 
         logger.info(','.join(map(str, [rnd, "aggregation", "end", time.time_ns(), time.process_time_ns(), "", ""])))
 
-        if rnd == settings["round_pruning"]:
+        if rnd == self.round_pruning:
             print("PRUNING")
 
             logger.info(','.join(map(str, [rnd, "pruning", "start", time.time_ns(), time.process_time_ns(), "", ""])))
@@ -377,7 +377,7 @@ class Server:
             # parameters_aggregated = weights_to_parameters(to_prune_modules)
 
             ########################################
-            # LOCAL PRUNING
+            # GBLOBAL PRUNING
             parameters_to_prune = (
                 (self.model.conv1, 'weight'),
                 (self.model.conv2, 'weight'),
