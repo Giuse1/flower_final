@@ -9,7 +9,6 @@ from operator import itemgetter
 import random
 import torch.nn.utils.prune as prune
 
-
 SEED = 0
 random.seed(SEED)
 np.random.seed(SEED)
@@ -21,35 +20,32 @@ torch.backends.cudnn.benchmark = False
 
 
 def load_data(batch_size):
-
     transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
     testset = CIFAR10("data", train=False, download=False, transform=transform)
     testloader = DataLoader(testset, batch_size=batch_size)
     num_examples = {"testset": len(testset)}
 
-    return  testloader, num_examples
+    return testloader, num_examples
+
 
 def get_cifar_iid(batch_size, total_num_clients, id):
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-
-
-    transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-
-    trainset = CIFAR10(root='data', train=True,download=False, transform=transform) # todo
+    trainset = CIFAR10(root='data', train=True, download=False, transform=transform)  # todo
     total_data_train = len(trainset)
     random_list_train = random.sample(range(total_data_train), total_data_train)
     data_per_client_train = int(total_data_train / total_num_clients)
-    indexes_train = random_list_train[id*data_per_client_train: (id+1)*data_per_client_train]
+    indexes_train = random_list_train[id * data_per_client_train: (id + 1) * data_per_client_train]
     trainset = (list(itemgetter(*indexes_train)(trainset)))
     trainloader = (torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True))
 
-    testset = CIFAR10(root='data', train=False,download=False, transform=transform)
+    testset = CIFAR10(root='data', train=False, download=False, transform=transform)
     testloader = (torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False))
 
     return trainloader, testloader
 
-def test_server(net, testloader, device):
 
+def test_server(net, testloader, device):
     net.eval()
     criterion = torch.nn.CrossEntropyLoss()
     correct, total, loss = 0, 0, 0.0
@@ -64,14 +60,43 @@ def test_server(net, testloader, device):
     accuracy = correct / total
     return loss, accuracy
 
-class CustomMask(prune.BasePruningMethod):
 
-    def compute_mask(self, t, default_mask):
-        mask = default_mask.clone()
-        mask.view(-1)[::2] = 0
-        return mask
+# class CustomMask(prune.BasePruningMethod):
+#
+#     def compute_mask(self, t, default_mask):
+#         mask = default_mask.clone()
+#         mask.view(-1)[::2] = 0
+#         return mask
+#
+#
+# def foobar_unstructured(module, name):
+#     CustomMask.apply(module, name)
+#     return module
 
-def foobar_unstructured(module, name):
 
-    CustomMask.apply(module, name)
-    return module
+def non_zero_indeces(m):
+    """return indeces of non zero elements in a tensor of shape [ndim,nse] """
+    return torch.nonzero(m, as_tuple=False).T
+
+
+def non_zero_values(m):
+    """return values of non zero elements in a tensor of shape [nse] """
+
+    values = torch.reshape(m, [torch.numel(m)])
+    values = values[values != 0]
+
+    return values
+
+
+def get_sparse_representation(m):
+    """return
+    1. indeces of non zero elements in a tensor of shape [ndim, nse]
+    2. values of non zero elements in a tensor of shape [nse]
+    """
+
+    non_zero_indeces = torch.nonzero(m, as_tuple=False).T
+
+    non_zero_values = torch.reshape(m, [torch.numel(m)])
+    non_zero_values = non_zero_values[non_zero_values != 0]
+
+    return non_zero_indeces, non_zero_values
