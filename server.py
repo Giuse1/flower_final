@@ -59,6 +59,7 @@ def get_eval_fn(model, testloader, device, logger):
         loss, accuracy = test_server(model, testloader, device)
         logger.info(','.join(map(str, [rnd, "evaluate", "end", time.time_ns(), time.process_time_ns(), loss, accuracy])))
 
+        torch.save(model.state_dict(), f"server_models/rnd{rnd}")
         return float(loss), {"accuracy":float(accuracy)}
 
     return evaluate
