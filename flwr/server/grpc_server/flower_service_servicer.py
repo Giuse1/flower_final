@@ -104,12 +104,9 @@ class FlowerServiceServicer(transport_pb2_grpc.FlowerServiceServicer):
                 try:
                     # Get server message from bridge and yield it
                     server_message = next(server_message_iterator)
-                    print(f"A: {strftime('%a, %d %b %Y %H:%M:%S +0000', gmtime())}")
                     yield server_message
-                    print(f"B: {strftime('%a, %d %b %Y %H:%M:%S +0000', gmtime())}")
                     # Wait for client message
                     client_message = next(client_message_iterator)
-                    print(f"C: {strftime('%a, %d %b %Y %H:%M:%S +0000', gmtime())}")
 
                     bridge.set_client_message(client_message)
                 except StopIteration:

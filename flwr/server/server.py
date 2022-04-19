@@ -20,6 +20,8 @@ import timeit
 from collections import OrderedDict
 from logging import DEBUG, INFO, WARNING
 from typing import Dict, List, Optional, Tuple, Union
+
+import torch
 import torch.nn.utils.prune as prune
 
 from flwr.common import (
@@ -135,18 +137,13 @@ class Server:
         torch.backends.cudnn.benchmark = False
 
         self.model = cifarNet()
-        self.starting_dict = copy.deepcopy(self.model.state_dict())
-        print(self.model.conv1.weight[0][0])
+        # print(self.model.conv1.weight[0][0])
 
         with open(f'settings.txt', 'r') as file_dict:
             settings = file_dict.read().replace('\n', '')
             settings = ast.literal_eval(settings)
         self.percentage_to_prune = settings["percentage_to_prune"]
-        self.round_pruning = settings["round_pruning"]-1
-
-        self.starting_modules = copy.deepcopy(self.model.state_dict())
-        self.weight_keys = list(self.starting_modules.keys())
-        self.weight_keys = [k for k in self.weight_keys if "weight" in k]
+        self.round_pruning = settings["round_pruning"]
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -187,13 +184,20 @@ class Server:
         for current_round in range(1, num_rounds + 1):
             # Train model and replace previous global model
             res_fit = self.fit_round(rnd=current_round)
-            if res_fit:
+            if res_fit and len(res_fit) == 3:
                 parameters_prime, _, _ = res_fit  # fit_metrics_aggregated
                 if parameters_prime:
+                    params_eval = parameters_prime
                     self.parameters = parameters_prime
 
+            elif res_fit and len(res_fit) == 4:
+                parameters_prime, params_to_tx, _, _ = res_fit  # fit_metrics_aggregated
+                if parameters_prime:
+                    params_eval = parameters_prime
+                    self.parameters = params_to_tx
+
             # Evaluate model using strategy implementation
-            res_cen = self.strategy.evaluate(parameters=self.parameters, rnd=current_round)
+            res_cen = self.strategy.evaluate(parameters=params_eval, rnd=current_round)
             if res_cen is not None:
                 loss_cen, metrics_cen = res_cen
                 log(
@@ -324,7 +328,7 @@ class Server:
         )
 
         # Aggregate training results
-        logger.info(','.join(map(str, [rnd, "aggregation", "start", time.time_ns(), time.process_time_ns(), "", ""])))
+        logger.info(','.join(map(str, [rnd, "","aggregation", "start", time.time_ns(), time.process_time_ns(), "", ""])))
 
         aggregated_result: Union[
             Tuple[Optional[Parameters], Dict[str, Scalar]],
@@ -344,37 +348,20 @@ class Server:
         else:
             parameters_aggregated, metrics_aggregated = aggregated_result
 
-        logger.info(','.join(map(str, [rnd, "aggregation", "end", time.time_ns(), time.process_time_ns(), "", ""])))
+        logger.info(','.join(map(str, [rnd, "", "aggregation", "end", time.time_ns(), time.process_time_ns(), "", ""])))
 
         if rnd == self.round_pruning:
-            print("PRUNING")
+            print(f"PRUNING - round {rnd}")
 
-            logger.info(','.join(map(str, [rnd, "pruning", "start", time.time_ns(), time.process_time_ns(), "", ""])))
+            logger.info(','.join(map(str, [rnd, "", "pruning", "start", time.time_ns(), time.process_time_ns(), "", ""])))
 
-            ordered_keys = (self.model.state_dict().keys())
+            self.ordered_keys = (self.model.state_dict().keys())
 
             # load aggreagated parameters in model
             parameters = parameters_to_weights(parameters_aggregated)
             params_dict = zip(self.model.state_dict().keys(), parameters)
             state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
             self.model.load_state_dict(state_dict, strict=True)
-
-            ## LOCAL PRUNING
-            # prune.l1_unstructured(self.model.conv1, name="weight", amount=settings["percentage_to_prune"])
-            # # SERVER: replace 0 with NaN
-            # original_server_mask = copy.deepcopy(self.model.conv1.weight_mask)
-            # server_mask_to_nan = (self.model.conv1.weight_mask == 0).data
-            # server_mask = (self.model.conv1.weight_mask != 0).data
-            # prune.remove(self.model.conv1, 'weight')
-            #
-            # # reinit starting weights
-            #
-            # with torch.no_grad():
-            #     self.model.conv1.weight[server_mask_to_nan] = float('nan')
-            #
-            # # from Torch Tensors to parameters
-            # to_prune_modules = [self.model.state_dict()[k].cpu().numpy() for k in ordered_keys]
-            # parameters_aggregated = weights_to_parameters(to_prune_modules)
 
             ########################################
             # GBLOBAL PRUNING
@@ -389,23 +376,59 @@ class Server:
             prune.global_unstructured(
                 parameters_to_prune,
                 pruning_method=prune.L1Unstructured,
-                amount=0.5,
+                amount=self.percentage_to_prune,
             )
 
             # replace weights with mask
             state_dict = copy.deepcopy(self.model.state_dict())
-            to_return_dict = []
+            to_return_list = []
+            self.mask_dict = {}
+            self.mask_indices_dict = {}
 
-            for k in ordered_keys:
+            for k in self.ordered_keys:
                 if "weight" in k:
-                    to_return_dict.append(state_dict[k+"_mask"].cpu().numpy())
+                    m = state_dict[k+"_mask"].cpu().type(torch.bool).numpy()
+                    self.mask_dict[k] = state_dict[k+"_mask"]
+                    self.mask_indices_dict[k] = self.mask_dict[k].to_sparse()._indices()
+                    to_return_list.append(np.packbits(m, axis=None))
+
                 else:
-                    to_return_dict.append(state_dict[k].cpu().numpy())
+                    to_return_list.append(state_dict[k].cpu().numpy())
 
-            parameters_aggregated = weights_to_parameters(to_return_dict)
+            parameters_aggregated_bit = weights_to_parameters(to_return_list)
+            # print(to_return_list[0][0][0])
 
+            for k in self.ordered_keys:
+                if "weight" in k:
+                    name, att = k.split('.')
+                    prune.remove(getattr(self.model,name), name=att)
 
-            logger.info(','.join(map(str, [rnd, "pruning", "end", time.time_ns(), time.process_time_ns(), "", ""])))
+            logger.info(','.join(map(str, [rnd, "", "pruning", "end", time.time_ns(), time.process_time_ns(), "", ""])))
+
+            return parameters_aggregated, parameters_aggregated_bit, metrics_aggregated, (results, failures)
+
+        elif rnd > self.round_pruning:
+            # load aggreagated parameters in model
+            parameters = parameters_to_weights(parameters_aggregated)
+            params_dict = zip(self.ordered_keys, parameters)
+            sparse_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+
+            no_sparse_list = []
+            sparse_list = [sparse_dict[k] for k in self.ordered_keys]
+
+            for k in self.ordered_keys:
+                if "weight" in k:
+
+                     m = torch.sparse_coo_tensor(self.mask_indices_dict[k], sparse_dict[k],
+                                                             tuple(self.mask_dict[k].shape)).to_dense()
+
+                     no_sparse_list.append(m.cpu().numpy())
+                else:
+                    no_sparse_list.append(sparse_dict[k].cpu().numpy())
+
+            parameters_aggregated_sparse = weights_to_parameters(sparse_list)
+            parameters_aggregated = weights_to_parameters(no_sparse_list)
+            return parameters_aggregated, parameters_aggregated_sparse, metrics_aggregated, (results, failures)
 
         return parameters_aggregated, metrics_aggregated, (results, failures)
 

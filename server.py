@@ -51,7 +51,6 @@ def get_eval_fn(model, testloader, device, logger):
 
         params_dict = zip(model.state_dict().keys(), parameters)
 
-
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
         model.load_state_dict(state_dict, strict=True)
 
@@ -59,7 +58,7 @@ def get_eval_fn(model, testloader, device, logger):
         loss, accuracy = test_server(model, testloader, device)
         logger.info(','.join(map(str, [rnd, "evaluate", "end", time.time_ns(), time.process_time_ns(), loss, accuracy])))
 
-        torch.save(model.state_dict(), f"server_models/rnd{rnd}")
+        # torch.save(model.state_dict(), f"server_models/rnd{rnd}.pt")
 
         return float(loss), {"accuracy":float(accuracy)}
 
@@ -80,6 +79,7 @@ def get_on_fit_config_fn() -> Callable[[int], Dict[str, str]]:
 
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu")
 print(DEVICE)
 testloader, num_examples = load_data(batch_size)
 model = cifarNet().to(DEVICE)
@@ -89,7 +89,7 @@ handler = logging.FileHandler(f"{folder}/server.csv", mode='w')
 logger = logging.getLogger("server")
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
-logger.info("round,operation,phase,t,p,train_loss,train_acc")
+logger.info("round,operation,phase,t,p,test_loss,test_acc")
 
 
 strategy = fl.server.strategy.FedAvg(

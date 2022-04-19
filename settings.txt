@@ -1,2 +1,2 @@
-{"address":"localhost","batch_size" : 50,"total_num_clients" : 5,"client_per_round": 5,"lr":0.05,
-"lr_decay":0.99,"num_rounds":100,"local_epochs" : 1,"percentage_to_prune":0.5,"round_pruning":50}
+{"address":"localhost","batch_size" : 50,"total_num_clients" : 2,"client_per_round": 2,"lr":0.05,
+"lr_decay":0.99,"num_rounds":5,"local_epochs" : 1,"percentage_to_prune":0.9,"round_pruning":2}

@@ -32,7 +32,7 @@ from .keras_client import has_get_properties as kerasclient_has_get_properties
 from .numpy_client import NumPyClient, NumPyClientWrapper
 from .numpy_client import has_get_properties as numpyclient_has_get_properties
 
-
+from datetime import datetime
 
 def start_client(
     server_address: str,
@@ -101,7 +101,11 @@ def start_client(
             while True:
 
                 t1, c1 = time.time_ns(), time.process_time_ns()
+                # print("BEFORE RECEIVE MESSAGE")
+                # print(datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f'))
                 server_message = receive()
+                # print("AFTER RECEIVE MESSAGE")
+                # print(datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f'))
                 t2, c2 = time.time_ns(), time.process_time_ns()
 
                 field = server_message.WhichOneof("msg")
@@ -116,7 +120,12 @@ def start_client(
                 )
 
                 t1, c1 = time.time_ns(), time.process_time_ns()
+                # print("BEFORE SEND MESSAGE")
+                # print(datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f'))
                 send(client_message)
+                # print("AFTER SEND  MESSAGE")
+                # print(datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f'))
+
                 t2, c2 = time.time_ns(), time.process_time_ns()
 
                 field = server_message.WhichOneof("msg")
